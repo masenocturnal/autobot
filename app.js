@@ -15,7 +15,8 @@ if (!process.env.slack_token ) {
 }
 
 // 3rd party libs
-var Botkit = require('BotKit');
+var Botkit = require('botkit');
+var unorm  = require('unorm');
 
 // acrobot functionality
 var acronyms = require('./acronym-finder.js')();
@@ -28,17 +29,42 @@ var bot = controller.spawn({
     token: process.env.slack_token
 }).startRTM();
 
-controller.hears(['cpu'], 'direct_message,direct_mention,mention,ambient', function(bot, message) {
+controller.hears(['do'], 'direct_message,direct_mention,mention,ambient', function(bot, message) {
     var processDone = false;
     //bot.reply(message, "one");
     //bot.reply(message, "two");
     var output = '';
+
+    message = validateInput(message);
+    if (!message.text) {
+
+        bot.reply("Sorry, I don't understand that");
+        processDone = true;
+    }
+
+    var args = message.text.split(' ');
+    args.shift();
+
+    if (args.length < 0) {
+        bot.reply("I'm not sure what you want me to do: Try one of the following:");
+        // usage();
+        processDone = true;
+    }
+    bot.reply(message, "Ok, I'll go fetch the punch cards");
+
+    var command = './'+ (args.shift());
+
+    // @todo remove any special chars from the command. 
+    // @todo make sure command is present in _our_ path and executable
+    var params  = args;
+
+    // @todo respond with an ack straight away
+
     var spawn = require("child_process").spawn, child;
-    child = spawn("powershell.exe",["D:\\devPrivate\\autobot-config\\commands\\win\\cpu.ps1"]);
-    child.stdout.on("data",function(data){
+    child = spawn(command, params );
+    child.stdout.on("data", function(data){
         output += data;
-        //bot.reply(message, "a little:");
-        bot.reply(message, "data:" + data);
+        bot.reply(message, "Output: \n" + data);
         console.log("Powershell Data: " + data);
     });
     child.stderr.on("data",function(data){
@@ -50,17 +76,7 @@ controller.hears(['cpu'], 'direct_message,direct_mention,mention,ambient', funct
         //bot.reply(message, "end");
         console.log("Powershell Script finished");
     });
-    child.stdin.end(); //end input    
-    //bot.reply(message, output);
-/*
-    var _flagCheck = setInterval(function() {
-        if (processDone) {
-            clearInterval(_flagCheck);
-            bot.replay('all done')
-            //theCallback(); // the function to run once all flags are true
-        }
-    }, 100); // interval set at 100 milliseconds
-*/
+    child.stdin.end(); //end input 
 });
 
 controller.hears(['hello'], 'direct_message,direct_mention,mention,ambient', function(bot, message) {
@@ -78,6 +94,7 @@ controller.hears(['sleep'], 'direct_message,direct_mention,mention,ambient', fun
     isAwake = false;
 });
 
+/*
 controller.hears(['ignore (.*)'], 'direct_message,direct_mention,mention', function(bot, message) {
     if (isAwake) {
         var acronymToIgnore = message.match[1].toLowerCase();
@@ -90,6 +107,20 @@ controller.hears(['(.*)'], 'direct_message,direct_mention,mention,ambient', func
         acronyms.findAcronyms(bot, message, controller);
     }
 });
+*/
+
+function validateInput(message) {
+    
+    // normalize so we are comparing apples to apples
+    // assumes utf8 or ascii shell
+    // @todo check
+    var text = unorm.nfc(message.text);
+
+    console.log('received the following from the remote' + text);
+
+    message.text = text;
+    return message;
+}
 
 function buildController(env) {
     var slackBotOptions = {
