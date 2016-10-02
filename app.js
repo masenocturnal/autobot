@@ -35,6 +35,7 @@ controller.hears(['do'], 'direct_message,direct_mention,mention,ambient', functi
 
         var commands = InputValidator.parseMessage(message.text);
 
+
         // @todo load from config
         var validCommands = [
             'HelloBot',
@@ -44,19 +45,22 @@ controller.hears(['do'], 'direct_message,direct_mention,mention,ambient', functi
         if (InputValidator.isValidCommand(commands['command'], validCommands)) {
             // @todo more validation
             // @todo try to split this up more
-            var spawn = require("child_process").execFile, child;
+            var spawn = require("child_process").spawn, child;
+            
             console.log(commands.command);
             console.log(commands.args);
+
             bot.reply(message, 'Output: ' );
             //@todo make configurable
             child = spawn("./Tasks/" +commands.command, commands.args );            
             child.stdout.on("data", function(data){
+                console.log("Data: " + data.toString());
                 var StringDecoder= require('string_decoder').StringDecoder;
                 
                 var decoder = new StringDecoder("utf-8");
                 var output = decoder.write(data);
                 bot.reply(message, output);
-                console.log("Data: " + output);
+                console.log("Data: " + data.toString());
             });
 
             child.stderr.on("data",function(data){
@@ -121,5 +125,7 @@ function buildController(env) {
     var slackBotOptions = {
         debug: false
     };
+
+
     return Botkit.slackbot(slackBotOptions);
 }
