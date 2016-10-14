@@ -1,0 +1,8 @@
+{ 
+    "validCommands": [
+        { "name": "HelloBot", "path": "./Tasks/HelloBot"},
+        { "name": "Playbook", "path": "./Tasks/ansible-playbook"},
+        { "name": "newpw", "path": "./Tasks/newpw"},
+        { "name": "cpu", "path": "D:\\devPrivate\\autobot-config\\commands\\win\\cpu.ps1", "executable": "powershell.exe"}
+    ]
+}
