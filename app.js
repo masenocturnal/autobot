@@ -12,6 +12,8 @@ if (!process.env.slack_token ) {
 
 // 3rd party libs
 var Botkit = require('botkit');
+var _ = require('lodash');
+const os = require('os');
 
 var isAwake    = true;
 var controller = buildController(process.env);
@@ -20,79 +22,128 @@ var bot = controller.spawn({
     token: process.env.slack_token
 }).startRTM();
 
-controller.hears(['do'], 'direct_message,direct_mention,mention,ambient', function(bot, message) {
+// @todo load from TaskList
+var fs = require('fs');
+var validCommands;
+try {
+    file = JSON.parse(fs.readFileSync('./validCommands.json', 'utf8'));
+    validCommands = file.validCommands;
+} catch (e) {
+    console.error("./validCommands.json was not able to be read");
+    process.exit(1);
+}
+
+
+// var validCommands = [
+//     { name: 'HelloBot', path: './Tasks/HelloBot'},
+//     { name: 'Playbook', path: './Tasks/ansible-playbook'},
+//     { name: 'newpw', path: './Tasks/newpw'},
+//     { name: 'cpu', path: 'D:\\devPrivate\\autobot-config\\commands\\win\\cpu.ps1', executable: 'powershell.exe'},
+// ]; 
+
+controller.hears(['help'], 'direct_message,direct_mention,mention,ambient', function(bot, message) {
+    var commandList = _.map(validCommands, 'name').join(os.EOL);
+    bot.reply(message, 'Available commands:');
+    bot.reply(message, commandList);
+    
+});
+
+controller.hears(['exec'], 'direct_message,direct_mention,mention,ambient', function(bot, message) {
     var processDone = false;
     var output = '';
 
     // We return a message here so that the user
     // has immediate feedback
-    bot.reply(message, "OK boss.");
-    
+    //bot.reply(message, "executing: ");
+    bot.startTyping(message);
     try {
-
         var InputValidator = new require('./zdam/InputValidator'); 
         InputValidator.normalizeMessage(message);
-
         var commands = InputValidator.parseMessage(message.text);
 
-
-        // @todo load from config
-        var validCommands = [
-            'HelloBot',
-            'ansible-playbook'
-        ];
-
-        if (InputValidator.isValidCommand(commands['command'], validCommands)) {
+        if (InputValidator.isValidCommand(commands.command, validCommands)) {
             // @todo more validation
             // @todo try to split this up more
-            var spawn = require("child_process").spawn, child;
-            
+            bot.reply(message, 'Output: ' );
+
+            var spawn = null;
+            var child = null;
+            var commandConfig = _.find(validCommands, { 'name': commands.command });
+            var commandPath = commandConfig.path;
+
+            if (commandConfig.executable) {
+                spawn = require("child_process").spawn;
+
+                commandPath = commandConfig.executable;
+                commands.args.unshift(commandConfig.path);
+
+            } else {
+                spawn = require("child_process").spawn;
+            }
+
             console.log(commands.command);
+            console.log(commandPath);
             console.log(commands.args);
 
-            bot.reply(message, 'Output: ' );
             //@todo make configurable
-            child = spawn("./Tasks/" +commands.command, commands.args );            
+            child = spawn(commandPath, commands.args);
+            child.stdout.setEncoding('utf8');
             child.stdout.on("data", function(data){
+                
                 console.log("Data: " + data.toString());
                 var StringDecoder= require('string_decoder').StringDecoder;
-                
-                var decoder = new StringDecoder("utf-8");
+               
+                // AFAIK slack is using UTF8
+                var decoder = new StringDecoder("utf8");
                 var output = decoder.write(data);
-                bot.reply(message, output);
-                console.log("Data: " + data.toString());
+                
+                // console.log("Data: " + output);
+                
+                // this allows us to render the content 
+                // as preformatted text using markdown.
+                // is there a better way to do this ?
+                bot.reply(message, {
+                    "text": '```'+data+'```',
+                    "mrkdwn": true
+                }); // @todo not working for me
+                
+                // @todo optionally re-enable this for powershell  
+                //var theData = String(data);
+                //bot.reply(message, theData);
+                
             });
 
             child.stderr.on("data",function(data){
                 console.log("Errors: " + data);
             });
 
-            child.on("exit",function(){
-                prcessDone = true;
+            child.on("close",function(){
+                processDone = true;
+                bot.reply(message, "Script finished");
                 console.log("Script finished");
             });
             
             child.stdin.end(); //end input
         } else {
-            var msg = 'Can not run :' + commands['command'] +" as it's not in the whitelist" 
+            var msg = 'Can not run :' + commands['command'] +" as it's not in the list of valid commands" 
             console.error(msg);
-            bot.reply("Sorry, this command is not in the whitelist");
+            bot.reply(message, "Sorry, this command is not in the list of valid command");
             processDone = true;
         }
         // @todo remove any special chars from the command. 
         // @todo make sure command is present in _our_ path and executable
 
     } catch(e) {
-        console.error(e);
 
+        console.error(e);
         switch (e.name) {
             case 'MessageEmpty':
-                bot.reply("I'm sorry, you haven't told me what you want me to do");
+                bot.reply(message, "I'm sorry, you haven't told me what you want me to do");
                 processDone = true;
             break;
             case 'ZeroArguments':                
-                bot.reply("I'm not sure what you want me to do: Try one of the following:");
-                bot.reply(usage());
+                bot.reply(message, "I'm not sure what you want me to do: Try one of the following:");
+                bot.reply(message, usage());
                 processDone = true;
             break;
         }        
@@ -125,7 +176,6 @@ function buildController(env) {
     var slackBotOptions = {
         debug: false
     };
-
 
     return Botkit.slackbot(slackBotOptions);
 }

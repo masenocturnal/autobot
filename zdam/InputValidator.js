@@ -3,6 +3,10 @@
  * 
  * 
  */ 
+
+var _ = require('lodash');
+
+
 var InputValidator = function(){
 
 };
@@ -41,9 +45,11 @@ InputValidator.isValidCommand = function(command, validCommands) {
         }
     }
 
+    var found =  _.find(validCommands, { 'name': command });
+
     // limit to only alpha-numeric
     // @todo
-    return true;
+    return !_.isUndefined(found);
 };
 
 /*
